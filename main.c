@@ -16,6 +16,12 @@ const char *nomeTipoToken(TipoToken tipo) {
             return "NUM";
         case OP:
             return "OP";
+        case PONTO_VIRGULA:
+            return "PONTO_VIRGULA";
+        case IGUAL:
+            return "IGUAL";
+        case IDENTIFICADOR:
+            return "IDENTIFICADOR";
         case TOKEN_EOF:
             return "TOKEN_EOF";
         case ERRO:

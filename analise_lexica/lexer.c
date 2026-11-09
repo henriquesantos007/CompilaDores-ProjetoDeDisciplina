@@ -25,25 +25,78 @@ void ignorarEspaco(Lexer *lexer) {
 	}
 }
 
-// Função específica para ler números que podem ter mais de 1 caractere. Retorna o token corretamente estruturado
 Token lerNumero(Lexer *lexer) {
-	size_t inicio = (size_t)lexer->indice;
+    size_t inicio = (size_t)lexer->indice;
 
-	while (!fimBuffer(lexer) &&
-		isdigit((unsigned char)lexer->buffer[lexer->indice])) {
-		lexer->indice++;
-	}
+    while (!fimBuffer(lexer) &&
+        isdigit((unsigned char)lexer->buffer[lexer->indice])) {
+        lexer->indice++;
+    }
 
-	size_t tamanho = (size_t)lexer->indice - inicio; // Encontra o tamanho em caracteres do número
-	Token token = {NUM, malloc(tamanho + 1), inicio};  // Aloca para o lexema o tamanho do caracteres do respectivo número no código fonte
-	if (token.lexema == NULL) {
-		token.tipo = ERRO;
-		return token;
-	}
-	memcpy(token.lexema, lexer->buffer + inicio, tamanho); // Faz a cópia da string do número para o lexema do token
-	token.lexema[tamanho] = '\0';
+    // Números seguidos de letras formam uma sequência inválida.
+    if (!fimBuffer(lexer) &&
+        isalpha((unsigned char)lexer->buffer[lexer->indice])) {
 
-	return token;
+        while (!fimBuffer(lexer) &&
+            (isalnum((unsigned char)lexer->buffer[lexer->indice]))) {
+            lexer->indice++;
+        }
+
+        size_t tamanho = (size_t)lexer->indice - inicio;
+        Token token = {ERRO, malloc(tamanho + 1), inicio};
+
+        if (token.lexema == NULL) {
+            return token;
+        }
+
+        memcpy(token.lexema, lexer->buffer + inicio, tamanho);
+        token.lexema[tamanho] = '\0';
+
+        return token;
+    }
+
+    size_t tamanho = (size_t)lexer->indice - inicio;
+    Token token = {NUM, malloc(tamanho + 1), inicio};
+
+    if (token.lexema == NULL) {
+        token.tipo = ERRO;
+        return token;
+    }
+
+    memcpy(token.lexema, lexer->buffer + inicio, tamanho);
+    token.lexema[tamanho] = '\0';
+
+    return token;
+}
+
+// Função para reconhecer identificadores (nomes de variáveis).
+// Um identificador começa com uma letra e pode ser seguido por letras ou dígitos.
+Token lerIdentificador(Lexer *lexer) {
+    size_t inicio = (size_t)lexer->indice;
+
+    // Continua lendo enquanto encontrar letras ou dígitos.
+    while (!fimBuffer(lexer) &&
+        (isalpha((unsigned char)lexer->buffer[lexer->indice]) ||
+         isdigit((unsigned char)lexer->buffer[lexer->indice]))) {
+        lexer->indice++;
+    }
+
+    // Calcula o tamanho do identificador encontrado.
+    size_t tamanho = (size_t)lexer->indice - inicio;
+
+    // Cria o token e aloca espaço para armazenar seu lexema.
+    Token token = {IDENTIFICADOR, malloc(tamanho + 1), inicio};
+
+    if (token.lexema == NULL) {
+        token.tipo = ERRO;
+        return token;
+    }
+
+    // Copia o identificador do código-fonte para o lexema.
+    memcpy(token.lexema, lexer->buffer + inicio, tamanho);
+    token.lexema[tamanho] = '\0';
+
+    return token;
 }
 
 // Função de resgate dos tokens
@@ -66,36 +119,44 @@ Token proximoToken(Lexer *lexer) {
 
 	char caractere = lexer->buffer[lexer->indice];
 
-    // Aplica a função exclusiva de lerNumero para caracteres numéricos
-	if (isdigit((unsigned char)caractere)) {
-		return lerNumero(lexer);
-	}
+    if (isdigit((unsigned char)caractere)) {
+    return lerNumero(lexer);
+}
 
-    // Segue para definir outras opções de tipos de tokens
-	switch (caractere) {
-		case '(':
-			tipo = ABRE_PAR;
-			break;
-		case ')':
-			tipo = FECHA_PAR;
-			break;
-		case '+':
-		case '-':
-		case '/':
-		case '*':
-			tipo = OP;
-			break;
-		default: {
-			Token token = {ERRO, malloc(2), indice}; // Token de erro caso encontre um caractere que não foi mapeado
-			lexer->indice++;
-			if (token.lexema != NULL) {
-				token.lexema[0] = caractere;
-				token.lexema[1] = '\0';
-			}
-			return token;
-		}
-	}
+if (isalpha((unsigned char)caractere)) {
+    return lerIdentificador(lexer);
+}
 
+// Segue para definir outras opções de tipos de tokens
+switch (caractere) {
+    case '(':
+        tipo = ABRE_PAR;
+        break;
+    case ')':
+        tipo = FECHA_PAR;
+        break;
+    case ';':
+        tipo = PONTO_VIRGULA;
+        break;
+    case '=':
+        tipo = IGUAL;
+        break;
+    case '+':
+    case '-':
+    case '/':
+    case '*':
+        tipo = OP;
+        break;
+    default: {
+        Token token = {ERRO, malloc(2), indice};
+        lexer->indice++;
+        if (token.lexema != NULL) {
+            token.lexema[0] = caractere;
+            token.lexema[1] = '\0';
+        }
+        return token;
+    }
+}
     // Estruturação do retorno do token
 	Token token = {tipo, malloc(2), indice};
 	lexer->indice++;
