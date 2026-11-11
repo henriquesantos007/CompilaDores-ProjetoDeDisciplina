@@ -117,20 +117,21 @@ int main( int argc, char *argv[]){
         Lexer lexerSintatico = inicializaLexer(buffer);
         Parser parser = inicializaParser(&lexerSintatico);
 
-        Exp *arvore = analisaPrograma(&parser);
+        Program *programa = analisaPrograma(&parser);
 
         if (modoAssembly) {
-            if (gerar_codigo_ast(arvore, stdout) != 0) {
+            if (programa->declaracoes != NULL ||
+                gerar_codigo_ast(programa->expressaoFinal, stdout) != 0) {
                 fprintf(stderr, "Erro ao gerar o codigo assembly.\n");
                 codigoSaida = 1;
             }
         } else {
-            printf("Arvore Sintatica: ");
-            imprimeExp(arvore);
-            printf("\n");
+            printf("Arvore Sintatica:\n");
+            imprimeProgram(programa);
         }
 
-        liberaExp(arvore);
+        liberaProgram(programa);
+    
         free(parser.atual.lexema);
     }
 
