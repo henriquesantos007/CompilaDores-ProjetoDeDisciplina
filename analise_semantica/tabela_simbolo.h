@@ -21,4 +21,10 @@ typedef struct {
 TabelaSimbolos* criaTabelaSimbolos();
 void liberaTabelaSimbolos(TabelaSimbolos *tabela);
 
+// Insere uma nova variável na tabela
+void inserirTabela(TabelaSimbolos *tabela, const char *nome);
+
+// Retorna true se a variável já existe, false caso contrário
+bool buscarTabela(TabelaSimbolos *tabela, const char *nome);
+
 #endif
