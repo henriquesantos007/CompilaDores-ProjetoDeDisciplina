@@ -5,6 +5,7 @@
 #include "parser.h"
 #include "ast.h"
 #include "gerador.h"
+#include "anlise_semantica.h"
 
 const char *nomeTipoToken(TipoToken tipo) {
     switch (tipo) {
@@ -119,9 +120,11 @@ int main( int argc, char *argv[]){
 
         Program *programa = analisaPrograma(&parser);
 
+        analisarSemantica(programa);
+
         if (modoAssembly) {
             if (programa->declaracoes != NULL ||
-                gerar_codigo_ast(programa->expressaoFinal, stdout) != 0) {
+                gerar_codigo_ast(programa, stdout) != 0) {
                 fprintf(stderr, "Erro ao gerar o codigo assembly.\n");
                 codigoSaida = 1;
             }
