@@ -1,6 +1,6 @@
-# Atividade 05 — Compilador EC1 (Geração de Código)
+# Atividade 07 — Compilador EV (Análise Semântica e Geração de Código)
 
-**Disciplina:** Construção de Compiladores — Prof. Andrei Formiga  
+**Disciplina:** Construção de Compiladores  
 **Plataforma alvo:** x86-64 / Linux (GNU Assembler)
 
 ## 1. Grupo
@@ -12,87 +12,122 @@
 | Maria Eloiza Monteiro de Souza     | 20240008280 |
 | Vinicius Victor Lopes de Almeida   | 20240008181 |
 
-## 2. Etapa léxica
+## 2. Etapa Léxica
 
-O analisador léxico lê uma expressão de um arquivo texto e a divide em tokens. Cada token exibido contém seu tipo, lexema e índice inicial no conteúdo do arquivo. Espaços, tabulações e quebras de linha são ignorados.
+O analisador léxico lê o código-fonte de um arquivo e o converte em uma sequência de tokens. Na linguagem EV, espaços, tabulações e quebras de linha são ignorados. Os seguintes tokens são reconhecidos:
 
-São reconhecidos os seguintes tokens:
+| Token           | Lexemas reconhecidos |
+| --------------- | -------------------- |
+| `IDENTIFICADOR` | Nomes de variáveis (ex: `x`, `idade123`, `ABC`) |
+| `NUM`           | Números inteiros (ex: `321`) |
+| `OP`            | Operadores matemáticos (`+`, `-`, `*`, `/`) |
+| `IGUAL`         | Atribuição e marcador de expressão final (`=`) |
+| `PONTO_VIRGULA` | Fim de declaração de variável (`;`) |
+| `ABRE_PAR`      | `(` |
+| `FECHA_PAR`     | `)` |
+| `TOKEN_EOF`     | Fim do arquivo |
+| `ERRO`          | Caractere não reconhecido |
 
-| Token | Lexemas reconhecidos |
-| ----- | -------------------- |
-| `ABRE_PAR` | `(` |
-| `FECHA_PAR` | `)` |
-| `NUM` | Uma ou mais casas decimais, por exemplo `321` |
-| `OP` | `+`, `-`, `*` ou `/` |
-| `TOKEN_EOF` | Fim do arquivo |
-| `ERRO` | Caractere não reconhecido |
+## 3. Etapa Sintática
 
-## 3. Etapa sintática
+O analisador sintático (`parser.h`/`parser.c`) constrói a Árvore Sintática Abstrata (AST) validando a gramática da linguagem EV através de análise descendente recursiva. A nova gramática exige a declaração de variáveis antes da expressão final, sendo a expressão final precedida obrigatoriamente por um `=` como sinalizador:
 
-A partir da sequência de tokens do lexer, o analisador sintático (`parser.h`/`parser.c`) reconhece a gramática da linguagem EC1 usando análise descendente recursiva:
-
+```text
+<programa>  ::= <decl>* '=' <expressao>
+<decl>      ::= <identificador> '=' <expressao> ';'
+<expressao> ::= <exp_m> (('+' | '-') <exp_m>)*
+<exp_m>     ::= <prim> (('*' | '/') <prim>)*
+<prim>      ::= <num> | <identificador> | '(' <expressao> ')'
+<ident>     ::= <letra><letra_digito>*
+<num>       ::= <digito><digito>*
 ```
-<programa>  ::= <exp>
-<expressao> ::= <num> | '(' <exp> <op> <exp> ')'
-<op>        ::= '+' | '-' | '*' | '/'
+
+## 4. Etapa Semântica (Tabela de Símbolos)
+
+Atuando como uma camada de proteção antes da geração de código, a Análise Semântica garante a validade do escopo:
+- **Hash Table:** Implementada com algoritmo *djb2* e tratamento de colisões por encadeamento separado garantindo alta performance (`O(1)`) nas buscas e inserções.
+- **Validação de Variáveis:** O compilador percorre a AST registrando as variáveis declaradas. Caso a expressão matemática tente utilizar uma variável "fantasma" (não declarada previamente), o motor semântico emite um erro formatado em `stderr` e interrompe imediatamente o fluxo com `exit(1)`.
+
+## 5. Etapa de Síntese (Geração de Código x86-64)
+
+O motor de síntese (`gerador.c`) traduz a AST validada em um arquivo Assembly executável organizado em duas seções de hardware:
+- **Seção `.bss`:** Percorre a lista de declarações e utiliza a diretiva `.lcomm` para alocar dinamicamente 8 bytes de memória RAM (arquitetura 64 bits) para cada variável identificada.
+- **Seção `.text`:** Processa o cálculo matemático utilizando uma arquitetura LIFO baseada em pilha. Constantes e variáveis são lidas da memória e empilhadas (`pushq`). Operadores binários desempilham os operandos em registradores voláteis (`popq`), executam as instruções da ULA (`addq`, `subq`, `imulq`, `idivq`), e empilham o resultado de volta. Ao fim do laço, o valor é armazenado na RAM via `movq`.
+
+## 6. Como Executar e Testar
+
+### Pré-requisitos
+Ambiente Linux com as seguintes ferramentas de compilação C e baixo nível instaladas:
+- `gcc` (Compilador C)
+- `as` (GNU Assembler)
+- `ld` (GNU Linker)
+
+### 🤖 1. Execução Automatizada (Bateria de Testes)
+O projeto contém um script robusto de CI (Integração Contínua) que compila o motor C, gera os binários em Assembly e testa a linguagem contra diversos cenários matemáticos para prevenir regressões de memória ou sintaxe.
+
+Na raiz do projeto, dê permissão e rode o script:
+```bash
+chmod +x tests/test_sintese.sh
+./tests/test_sintese.sh
 ```
 
-O resultado é uma árvore de sintaxe abstrata (`ast.h`/`ast.c`), com nós de constante (`NO_CONST`) e de operação binária (`NO_OPBIN`). Qualquer erro léxico ou sintático encontrado durante a análise é reportado em `stderr` e encerra o programa com código de saída diferente de zero.
+### 🛠️ 2. Execução Manual Passo a Passo
+Para compilar visualmente o ciclo de vida completo de um código fonte (`.txt` / `.ev`), siga o pipeline de construção abaixo:
 
-## 4. Compilação e execução
-
-Na pasta do projeto, compile o programa com GCC:
-
-```sh
+**Passo A: Compilar o Motor do Compilador (C)**
+```bash
 gcc -std=c11 -Wall -Wextra -Werror \
-  -Ianalise_lexica -Ianalise_sintatica -Isintese \
-  main.c analise_lexica/lexer.c analise_sintatica/parser.c \
-  analise_sintatica/ast.c sintese/gerador.c -o compilador
+    -Ianalise_lexica -Ianalise_sintatica -Ianalise_semantica -Isintese \
+    main.c \
+    analise_lexica/lexer.c \
+    analise_sintatica/parser.c analise_sintatica/ast.c \
+    analise_semantica/analise_semantica.c analise_semantica/tabela_simbolos.c \
+    sintese/gerador.c \
+    -o compilador
 ```
 
-O modo padrão preserva a saída de tokens e da árvore sintática:
-
-```sh
-./compilador tests/exemplo04.txt
+**Passo B: Traduzir o código fonte (EV) para Assembly (x86-64)**
+Acrescente a flag `--asm`. O compilador omitirá a árvore e imprimirá estritamente o código x86-64. Redirecione a saída para salvar o arquivo. 
+```bash
+./compilador --asm tests/exemplo03.txt > programa.s
 ```
 
-Para gerar um programa assembly completo, use `--asm`. A saída padrão contém
-somente o assembly, então pode ser redirecionada diretamente para um arquivo:
+Caso queira visualizar somente a Sequência de Tokens e a Árvore Sintática, remova o `--asm` e NÃO redirecione a saída:
 
-```sh
-./compilador --asm tests/exemplo04.txt > programa.s &&
-as --64 programa.s -o programa.o &&
-ld programa.o -o programa &&
+```bash
+./compilador tests/exemplo03.txt 
+```
+
+**Passo C: Montar e Linkar o Executável Final**
+*(Execute estritamente na raiz do projeto para injetar com sucesso o `runtime.s`)*
+```bash
+as --64 programa.s -o programa.o
+ld programa.o -o programa
+```
+
+**Passo D: Rodar o Software Gerado**
+```bash
 ./programa
 ```
 
-Execute o comando `as` a partir da pasta do projeto para que ele encontre
-`runtime.s`, incluído pelo assembly gerado. O programa montado imprime o
-resultado inteiro da expressão e encerra.
+## 7. Arquivos de Exemplo e Testes
 
-Execute os testes automatizados de geração, montagem e execução com:
+A pasta `tests/` possui arquivos manuais estritamente adequados à nova gramática da Atividade 07:
+- `tests/exemplo01.txt`: Atribuição declarativa e retorno simples.
+- `tests/exemplo02.txt`: Múltiplas variáveis orquestradas em uma operação binária.
+- `tests/exemplo03.txt`: Cálculos compostos avançados (área geométrica) aplicando regras de escopo e precedência matemática completa.
+- `tests/test_sintese.sh`: Script de validação automática *end-to-end*.
 
-```sh
-sh tests/test_gerador.sh
-```
+## 8. Organização da Arquitetura
 
-## 5. Arquivos de exemplo e testes
+O projeto adota o Princípio da Responsabilidade Única (SRP) e separação estrutural de pastas:
+- `analise_lexica/`: Implementação do Lexer e mapeamento cru de Tokens.
+- `analise_sintatica/`: Implementação do Parser Descendente Recursivo e alocação da Árvore Sintática Abstrata (AST).
+- `analise_semantica/`: Validador de contexto protegido e motor nativo da Tabela de Símbolos (Hash Table).
+- `sintese/`: Motor gerador de código Assembly x86-64 e orquestrador de registradores e seções de memória.
+- `runtime.s`: Funções de sistema customizadas (`imprime_num` e `sair`), ligadas intrinsecamente no assembly final.
+- `main.c`: Orquestrador de alto nível do pipeline, responsável unicamente pelo tráfego e injeção de dependências.
 
-- `tests/exemplo01.txt`: expressão com operadores fora do formato totalmente parentetizado exigido pela gramática EC1 — válida lexicamente, mas rejeitada pela análise sintática.
-- `tests/exemplo02.txt`: arquivo vazio, para verificar o tratamento imediato do fim de arquivo.
-- `tests/exemplo03.txt`: expressão com caracteres não reconhecidos, para verificar a geração de tokens `ERRO`.
-- `tests/exemplo04.txt`: expressão válida segundo a gramática EC1; também pode ser usada para gerar e executar assembly.
+## 9. Uso de LLMs
 
-## 6. Organização dos arquivos
-
-- `analise_lexica/lexer.h` / `lexer.c`: tipos `Token` e `Lexer`, e implementação do analisador léxico.
-- `analise_sintatica/ast.h` / `ast.c`: estrutura da árvore de sintaxe abstrata (`Exp`) e funções auxiliares.
-- `analise_sintatica/parser.h` / `parser.c`: analisador sintático descendente recursivo.
-- `sintese/gerador.h` / `gerador.c`: geração recursiva de um programa assembly x86-64 completo.
-- `runtime.s`: rotinas `imprime_num` e `sair`, incluídas no assembly gerado.
-- `main.c`: leitura da entrada; imprime tokens e AST no modo padrão, ou assembly completo com `--asm`.
-- `tests/`: expressões de exemplo para análise e geração de código.
-
-## 7. Uso de LLMs
-
-As etapas anteriores da análise sintática e sua integração foram desenvolvidas com apoio do Claude Code, conforme registrado na entrega da Atividade 04. A geração de assembly, o runtime e a integração do modo `--asm` foram desenvolvidos com apoio de um assistente de IA, a partir dos requisitos da Atividade 05. As alterações foram revisadas e validadas compilando, montando e executando o código gerado.
+As etapas de análise léxica e sintática contaram com apoio inicial (conforme entregas anteriores). Para a **Atividade 07**, a engenharia da Análise Semântica via Tabela Hash (recomendação e implementação do algoritmo *djb2* O(1)), debugging, geração do `README.md` e arquivos de testes além do *refactoring* do `main.c` focado em princípios de *Clean Code*, foram estruturados e depurados colaborativamente sob a mentoria avançada da Inteligência Artificial do Google Gemini.

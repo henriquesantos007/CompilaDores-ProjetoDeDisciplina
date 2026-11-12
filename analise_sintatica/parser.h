@@ -10,7 +10,7 @@ typedef struct {
 } Parser;
 
 Parser inicializaParser(Lexer *lexer);
-Exp *analisaPrograma(Parser *parser);
+Program *analisaPrograma(Parser *parser);
 Exp *analisaExpressao(Parser *parser);
 Operador analisaOperador(Parser *parser);
 

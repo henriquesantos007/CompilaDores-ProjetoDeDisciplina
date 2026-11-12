@@ -4,12 +4,15 @@
 #include <stddef.h>
 
 typedef enum {
-	ABRE_PAR,
-	FECHA_PAR,
-	NUM,
-	OP,
-	TOKEN_EOF,
-	ERRO
+    ABRE_PAR,
+    FECHA_PAR,
+    NUM,
+    OP,
+    PONTO_VIRGULA,
+    IGUAL,
+    IDENTIFICADOR,
+    TOKEN_EOF,
+    ERRO
 } TipoToken;
 
 typedef struct {
