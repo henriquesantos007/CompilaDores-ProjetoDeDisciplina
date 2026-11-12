@@ -1,79 +1,95 @@
+#include <stdio.h>
+#include "ast.h"
 #include "gerador.h"
 
-static int operadorValido(Operador op) {
-	switch (op) {
-		case OP_SOMA:
-		case OP_SUB:
-		case OP_MULT:
-		case OP_DIV:
-			return 1;
-		default:
-			return 0;
-	}
+// Função auxiliar recursiva para as contas matemáticas
+static void gerar_codigo_expressao(Exp *exp, FILE *saida) {
+    if (exp == NULL) return;
+
+    if (exp->tipo == NO_CONST) {
+        // Empilha o número diretamente
+        fprintf(saida, "    pushq $%d\n", exp->dados.valor);
+    } 
+    else if (exp->tipo == NO_IDENT) {
+        // Traz o valor da memória para %rax, e depois empilha
+        fprintf(saida, "    movq %s, %%rax\n", exp->dados.identificador);
+        fprintf(saida, "    pushq %%rax\n");
+    } 
+    else if (exp->tipo == NO_OPBIN) {
+        // Gera o código das subexpressões
+        gerar_codigo_expressao(exp->dados.opbin.esq, saida);
+        gerar_codigo_expressao(exp->dados.opbin.dir, saida);
+
+        // Lógica de desempilhar
+        fprintf(saida, "    popq %%rbx\n"); // Lado direito
+        fprintf(saida, "    popq %%rax\n"); // Lado esquerdo
+
+        // Resolve a matemática baseada no operador
+        switch (exp->dados.opbin.op) {
+            case OP_SOMA:
+                fprintf(saida, "    addq %%rbx, %%rax\n");
+                break;
+            case OP_SUB:
+                fprintf(saida, "    subq %%rbx, %%rax\n");
+                break;
+            case OP_MULT:
+                fprintf(saida, "    imulq %%rbx, %%rax\n");
+                break;
+            case OP_DIV:
+                // O professor falou em sala que a divisão no x86-64 exige zerar o registrador %rdx antes de dividir
+                fprintf(saida, "    cqto\n");
+                fprintf(saida, "    idivq %%rbx\n");
+                break;
+        }
+
+        // Devolve o resultado final para a pilha
+        fprintf(saida, "    pushq %%rax\n");
+    }
 }
 
-static int expressaoValida(const Exp *exp) {
-	if (exp == NULL) {
-		return 0;
-	}
+// Motor principal de Geração de Código
+int gerar_codigo_ast(Program *programa, FILE *saida) {
+    if (programa == NULL || saida == NULL) return 1;
 
-	switch (exp->tipo) {
-		case NO_CONST:
-			return 1;
-		case NO_OPBIN:
-			return operadorValido(exp->dados.opbin.op) &&
-				expressaoValida(exp->dados.opbin.esq) &&
-				expressaoValida(exp->dados.opbin.dir);
-		default:
-			return 0;
-	}
-}
+    // Geração da seção .bss (é a memória das variáveis)
+    fprintf(saida, ".section .bss\n");
+    Declaration *decl = programa->declaracoes;
+    while (decl != NULL) {
+        // Reserva 8 bytes para cada variável (arquitetura x86-64)
+        fprintf(saida, "    .lcomm %s, 8\n", decl->identificador);
+        decl = decl->prox;
+    }
+    fprintf(saida, "\n");
 
-static int emitirExpressao(const Exp *exp, FILE *saida) {
-	if (exp->tipo == NO_CONST) {
-		return fprintf(saida, "\tmovq $%d, %%rax\n", exp->dados.valor) < 0 ? -1 : 0;
-	}
+    // Cabeçalho da seção .text (é o Código)
+    fprintf(saida, ".section .text\n");
+    fprintf(saida, ".globl _start\n");
+    fprintf(saida, "_start:\n");
 
-	if (emitirExpressao(exp->dados.opbin.dir, saida) != 0 ||
-		fprintf(saida, "\tpushq %%rax\n") < 0 ||
-		emitirExpressao(exp->dados.opbin.esq, saida) != 0 ||
-		fprintf(saida, "\tpopq %%rbx\n") < 0) {
-		return -1;
-	}
+    // Cálculo e atribuições das declarações
+    decl = programa->declaracoes; // Rebobina o ponteiro para o início da lista
+    while (decl != NULL) {
+        // Calcula a expressão (o resultado final da conta vai sobrar no topo da pilha)
+        gerar_codigo_expressao(decl->expressao, saida);
+        
+        // Desempilha o resultado para %rax e salva na memória da variável
+        fprintf(saida, "    popq %%rax\n");
+        fprintf(saida, "    movq %%rax, %s\n", decl->identificador);
+        
+        decl = decl->prox;
+    }
 
-	switch (exp->dados.opbin.op) {
-		case OP_SOMA:
-			return fprintf(saida, "\taddq %%rbx, %%rax\n") < 0 ? -1 : 0;
-		case OP_SUB:
-			return fprintf(saida, "\tsubq %%rbx, %%rax\n") < 0 ? -1 : 0;
-		case OP_MULT:
-			return fprintf(saida, "\timulq %%rbx, %%rax\n") < 0 ? -1 : 0;
-		case OP_DIV:
-			return fprintf(saida,
-				"\tcqto\n"
-				"\tidivq %%rbx\n") < 0 ? -1 : 0;
-		default:
-			return -1;
-	}
-}
+    // Cálculo da expressão final
+    gerar_codigo_expressao(programa->expressaoFinal, saida);
 
-int gerar_codigo_ast(const Exp *exp, FILE *saida) {
-	if (!expressaoValida(exp) || saida == NULL) {
-		return -1;
-	}
+    // O resultado da expressão final fica no topo da pilha.
+    // Desempilhamos para %rax, que é o registrador que a função imprime_num do runtime.s espera ler
+    fprintf(saida, "    popq %%rax\n");
 
-	if (fprintf(saida,
-		"\t.section .text\n"
-		"\t.globl _start\n"
-		"_start:\n") < 0 ||
-		emitirExpressao(exp, saida) != 0 ||
-		fprintf(saida,
-			"\tcall imprime_num\n"
-			"\tcall sair\n"
-			"\t.include \"runtime.s\"\n") < 0 ||
-		ferror(saida)) {
-		return -1;
-	}
+    // 5. FINALIZAÇÃO PADRÃO
+	fprintf(saida, "    call imprime_num\n");
+    fprintf(saida, "    call sair\n");
+    fprintf(saida, ".include \"runtime.s\"\n");
 
 	return 0;
 }
