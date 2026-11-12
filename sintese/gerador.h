@@ -5,6 +5,6 @@
 #include "../analise_sintatica/ast.h"
 
 /* Emite um programa x86-64 completo; o runtime.s deve estar acessível ao assembler. */
-int gerar_codigo_ast(const Exp *exp, FILE *saida);
+int gerar_codigo_ast(Program *programa, FILE *saida);
 
 #endif
