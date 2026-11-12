@@ -3,6 +3,8 @@
 #include "ast.h"
 #include "tabela_simbolos.h"
 
+static void verificaExpressao(TabelaSimbolos *tabela, Exp *exp);
+
 // Função principal da análise semântica
 void analisarSemantica(Program *programa) {
     // Cria a tabela de verificação (Hash Table)
