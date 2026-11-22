@@ -1,6 +1,4 @@
 base = 10;
 altura = 20;
-area = base * altura;
-{
-    return area / 2;
-}
+area = (base * altura);
+= (area / 2)

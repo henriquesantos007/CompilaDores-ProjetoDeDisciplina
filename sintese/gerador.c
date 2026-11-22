@@ -2,10 +2,7 @@
 #include "ast.h"
 #include "gerador.h"
 
-// Contador global estático para garantir nomes únicos de rótulos (Lfalso0, Lfim0, etc.)
-static int contador_rotulos = 0;
-
-// Função auxiliar recursiva para as contas matemáticas e comparações
+// Função auxiliar recursiva para as contas matemáticas
 static void gerar_codigo_expressao(Exp *exp, FILE *saida) {
     if (exp == NULL) return;
 
@@ -24,10 +21,10 @@ static void gerar_codigo_expressao(Exp *exp, FILE *saida) {
         gerar_codigo_expressao(exp->dados.opbin.dir, saida);
 
         // Lógica de desempilhar
-        fprintf(saida, "    popq %%rbx\n"); // Lado direito (B)
-        fprintf(saida, "    popq %%rax\n"); // Lado esquerdo (A)
+        fprintf(saida, "    popq %%rbx\n"); // Lado direito
+        fprintf(saida, "    popq %%rax\n"); // Lado esquerdo
 
-        // Resolve a operação baseada no operador
+        // Resolve a matemática baseada no operador
         switch (exp->dados.opbin.op) {
             case OP_SOMA:
                 fprintf(saida, "    addq %%rbx, %%rax\n");
@@ -39,81 +36,14 @@ static void gerar_codigo_expressao(Exp *exp, FILE *saida) {
                 fprintf(saida, "    imulq %%rbx, %%rax\n");
                 break;
             case OP_DIV:
-                // Extensão de sinal de %rax para %rdx:%rax antes da divisão
+                // O professor falou em sala que a divisão no x86-64 exige zerar o registrador %rdx antes de dividir
                 fprintf(saida, "    cqto\n");
                 fprintf(saida, "    idivq %%rbx\n");
                 break;
-            case OP_IGUAL:
-                fprintf(saida, "    xorq %%rcx, %%rcx\n");
-                fprintf(saida, "    cmpq %%rbx, %%rax\n");
-                fprintf(saida, "    setz %%cl\n");
-                fprintf(saida, "    movq %%rcx, %%rax\n");
-                break;
-            case OP_MENOR:
-                fprintf(saida, "    xorq %%rcx, %%rcx\n");
-                fprintf(saida, "    cmpq %%rbx, %%rax\n");
-                fprintf(saida, "    setl %%cl\n");
-                fprintf(saida, "    movq %%rcx, %%rax\n");
-                break;
-            case OP_MAIOR:
-                fprintf(saida, "    xorq %%rcx, %%rcx\n");
-                fprintf(saida, "    cmpq %%rbx, %%rax\n");
-                fprintf(saida, "    setg %%cl\n");
-                fprintf(saida, "    movq %%rcx, %%rax\n");
-                break;
         }
 
-        // Devolve o resultado final (número ou 0/1 booleano) para a pilha
+        // Devolve o resultado final para a pilha
         fprintf(saida, "    pushq %%rax\n");
-    }
-}
-
-// Função auxiliar recursiva para gerar código dos comandos (atribuição, if/else, while)
-static void gerar_codigo_comandos(Cmd *cmd, FILE *saida) {
-    while (cmd != NULL) {
-        if (cmd->tipo == CMD_ATRIB) {
-            gerar_codigo_expressao(cmd->dados.cmdAtrib.expressao, saida);
-            fprintf(saida, "    popq %%rax\n");
-            fprintf(saida, "    movq %%rax, %s\n", cmd->dados.cmdAtrib.identificador);
-        } 
-        else if (cmd->tipo == CMD_IF) {
-            int id = contador_rotulos++;
-
-            // Avalia a condição e desempilha o resultado para %rax
-            gerar_codigo_expressao(cmd->dados.cmdIf.condicao, saida);
-            fprintf(saida, "    popq %%rax\n");
-            fprintf(saida, "    cmpq $0, %%rax\n");
-            fprintf(saida, "    jz Lfalso%d\n", id);
-
-            // Bloco verdadeiro (if)
-            gerar_codigo_comandos(cmd->dados.cmdIf.blocoIf, saida);
-            fprintf(saida, "    jmp Lfim%d\n", id);
-
-            // Bloco falso (else)
-            fprintf(saida, "Lfalso%d:\n", id);
-            gerar_codigo_comandos(cmd->dados.cmdIf.blocoElse, saida);
-
-            fprintf(saida, "Lfim%d:\n", id);
-        } 
-        else if (cmd->tipo == CMD_WHILE) {
-            int id = contador_rotulos++;
-
-            fprintf(saida, "Linicio%d:\n", id);
-
-            // Avalia a condição e desempilha o resultado para %rax
-            gerar_codigo_expressao(cmd->dados.cmdWhile.condicao, saida);
-            fprintf(saida, "    popq %%rax\n");
-            fprintf(saida, "    cmpq $0, %%rax\n");
-            fprintf(saida, "    jz Lfim%d\n", id);
-
-            // Corpo do laço
-            gerar_codigo_comandos(cmd->dados.cmdWhile.corpo, saida);
-            fprintf(saida, "    jmp Linicio%d\n", id);
-
-            fprintf(saida, "Lfim%d:\n", id);
-        }
-
-        cmd = cmd->prox;
     }
 }
 
@@ -121,10 +51,7 @@ static void gerar_codigo_comandos(Cmd *cmd, FILE *saida) {
 int gerar_codigo_ast(Program *programa, FILE *saida) {
     if (programa == NULL || saida == NULL) return 1;
 
-    // Reseta o contador de rótulos a cada compilação
-    contador_rotulos = 0;
-
-    // Geração da seção .bss (memória das variáveis)
+    // Geração da seção .bss (é a memória das variáveis)
     fprintf(saida, ".section .bss\n");
     Declaration *decl = programa->declaracoes;
     while (decl != NULL) {
@@ -134,31 +61,35 @@ int gerar_codigo_ast(Program *programa, FILE *saida) {
     }
     fprintf(saida, "\n");
 
-    // Cabeçalho da seção .text (código executável)
+    // Cabeçalho da seção .text (é o Código)
     fprintf(saida, ".section .text\n");
     fprintf(saida, ".globl _start\n");
     fprintf(saida, "_start:\n");
 
-    // Cálculo e atribuições das declarações iniciais
-    decl = programa->declaracoes;
+    // Cálculo e atribuições das declarações
+    decl = programa->declaracoes; // Rebobina o ponteiro para o início da lista
     while (decl != NULL) {
+        // Calcula a expressão (o resultado final da conta vai sobrar no topo da pilha)
         gerar_codigo_expressao(decl->expressao, saida);
+        
+        // Desempilha o resultado para %rax e salva na memória da variável
         fprintf(saida, "    popq %%rax\n");
         fprintf(saida, "    movq %%rax, %s\n", decl->identificador);
+        
         decl = decl->prox;
     }
 
-    // Geração de código dos comandos do corpo { ... }
-    gerar_codigo_comandos(programa->comandos, saida);
-
-    // Cálculo da expressão final (return)
+    // Cálculo da expressão final
     gerar_codigo_expressao(programa->expressaoFinal, saida);
+
+    // O resultado da expressão final fica no topo da pilha.
+    // Desempilhamos para %rax, que é o registrador que a função imprime_num do runtime.s espera ler
     fprintf(saida, "    popq %%rax\n");
 
-    // Finalização padrão (imprime %rax e encerra o processo)
-    fprintf(saida, "    call imprime_num\n");
+    // 5. FINALIZAÇÃO PADRÃO
+	fprintf(saida, "    call imprime_num\n");
     fprintf(saida, "    call sair\n");
     fprintf(saida, ".include \"runtime.s\"\n");
 
-    return 0;
+	return 0;
 }
