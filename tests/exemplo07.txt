@@ -1,0 +1,12 @@
+a = 48;
+b = 18;
+{
+    while (a == b) == 0 {
+        if a > b {
+            a = a - b;
+        } else {
+            b = b - a;
+        }
+    }
+    return a;
+}
