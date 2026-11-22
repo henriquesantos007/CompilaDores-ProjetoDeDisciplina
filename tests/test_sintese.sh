@@ -7,7 +7,6 @@ trap 'rm -rf "$temporario"' EXIT HUP INT TERM
 
 cd "$raiz"
 
-# Compilação Atualizada incluindo o motor semântico
 gcc -std=c11 -Wall -Wextra -Werror \
     -Ianalise_lexica -Ianalise_sintatica -Ianalise_semantica -Isintese \
     main.c \
@@ -17,40 +16,47 @@ gcc -std=c11 -Wall -Wextra -Werror \
     sintese/gerador.c \
     -o "$temporario/compilador"
 
-testar_expressao() {
-    codigo_ev=$1
+testar_arquivo() {
+    arquivo=$1
     esperado=$2
-    
-    printf '%s\n' "$codigo_ev" > "$temporario/entrada.txt"
-    
-    # Roda o compilador
-    "$temporario/compilador" --asm "$temporario/entrada.txt" > "$temporario/programa.s"
-    
-    # Monta e Linka o Assembly x86-64
+
+    "$temporario/compilador" --asm "$arquivo" > "$temporario/programa.s"
+
     as --64 "$temporario/programa.s" -o "$temporario/programa.o"
     ld "$temporario/programa.o" -o "$temporario/programa"
-    
-    # Executa e Valida
+
     resultado=$("$temporario/programa")
     if [ "$resultado" != "$esperado" ]; then
-        printf 'Falha: O codigo gerou %s; esperado %s\n' "$resultado" "$esperado" >&2
+        printf 'Falha: %s gerou %s; esperado %s\n' "$arquivo" "$resultado" "$esperado" >&2
         exit 1
     fi
-    printf 'OK: Resultado = %s\n' "$resultado"
+    printf 'OK: %s = %s\n' "$arquivo" "$resultado"
 }
 
-echo "Iniciando testes de Sintese e Memoria (Atividade 07)..."
+testar_erro() {
+    arquivo=$1
 
-# Teste 1: Variavel Simples
-testar_expressao 'x = 10; = x' '10'
+    if "$temporario/compilador" --asm "$arquivo" > "$temporario/erro.s" 2> "$temporario/erro.txt"; then
+        printf 'Falha: %s deveria ter sido rejeitado\n' "$arquivo" >&2
+        exit 1
+    fi
+    printf 'OK: %s rejeitado (%s)\n' "$arquivo" "$(cat "$temporario/erro.txt")"
+}
 
-# Teste 2: Multiplas Variaveis e Matematica
-testar_expressao 'x = 5; y = 15; = (y - x)' '10'
+echo "Iniciando testes da linguagem Cmd (Atividade 08)..."
 
-# Teste 3: Variaveis Compostas e Precedencia
-testar_expressao 'base = 10; altura = 20; area = (base * altura); = (area / 2)' '100'
+testar_arquivo tests/exemplo01.txt 42
+testar_arquivo tests/exemplo02.txt 10
+testar_arquivo tests/exemplo03.txt 100
+testar_arquivo tests/exemplo04.txt 16
+testar_arquivo tests/exemplo05.txt 55
+testar_arquivo tests/exemplo06.txt 2
+testar_arquivo tests/exemplo07.txt 6
 
-# Teste 4: Regra de Atribuicao Cega (o compilador so calcula e armazena)
-testar_expressao 'a = (11 - 7); b = 333; = a' '4'
+echo "Testando entradas invalidas..."
+
+testar_erro tests/erro01.txt
+testar_erro tests/erro02.txt
+testar_erro tests/erro03.txt
 
 echo "Todos os testes passaram com sucesso!"
