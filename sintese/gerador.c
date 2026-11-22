@@ -2,7 +2,10 @@
 #include "ast.h"
 #include "gerador.h"
 
-// Função auxiliar recursiva para as contas matemáticas
+// Contador global estático para garantir nomes únicos de rótulos (Lfalso0, Lfim0, etc.)
+static int contador_rotulos = 0;
+
+// Função auxiliar recursiva para as contas matemáticas e comparações
 static void gerar_codigo_expressao(Exp *exp, FILE *saida) {
     if (exp == NULL) return;
 
@@ -21,10 +24,10 @@ static void gerar_codigo_expressao(Exp *exp, FILE *saida) {
         gerar_codigo_expressao(exp->dados.opbin.dir, saida);
 
         // Lógica de desempilhar
-        fprintf(saida, "    popq %%rbx\n"); // Lado direito
-        fprintf(saida, "    popq %%rax\n"); // Lado esquerdo
+        fprintf(saida, "    popq %%rbx\n"); // Lado direito (B)
+        fprintf(saida, "    popq %%rax\n"); // Lado esquerdo (A)
 
-        // Resolve a matemática baseada no operador
+        // Resolve a operação baseada no operador
         switch (exp->dados.opbin.op) {
             case OP_SOMA:
                 fprintf(saida, "    addq %%rbx, %%rax\n");
@@ -36,13 +39,31 @@ static void gerar_codigo_expressao(Exp *exp, FILE *saida) {
                 fprintf(saida, "    imulq %%rbx, %%rax\n");
                 break;
             case OP_DIV:
-                // O professor falou em sala que a divisão no x86-64 exige zerar o registrador %rdx antes de dividir
+                // Extensão de sinal de %rax para %rdx:%rax antes da divisão
                 fprintf(saida, "    cqto\n");
                 fprintf(saida, "    idivq %%rbx\n");
                 break;
+            case OP_IGUAL:
+                fprintf(saida, "    xorq %%rcx, %%rcx\n");
+                fprintf(saida, "    cmpq %%rbx, %%rax\n");
+                fprintf(saida, "    setz %%cl\n");
+                fprintf(saida, "    movq %%rcx, %%rax\n");
+                break;
+            case OP_MENOR:
+                fprintf(saida, "    xorq %%rcx, %%rcx\n");
+                fprintf(saida, "    cmpq %%rbx, %%rax\n");
+                fprintf(saida, "    setl %%cl\n");
+                fprintf(saida, "    movq %%rcx, %%rax\n");
+                break;
+            case OP_MAIOR:
+                fprintf(saida, "    xorq %%rcx, %%rcx\n");
+                fprintf(saida, "    cmpq %%rbx, %%rax\n");
+                fprintf(saida, "    setg %%cl\n");
+                fprintf(saida, "    movq %%rcx, %%rax\n");
+                break;
         }
 
-        // Devolve o resultado final para a pilha
+        // Devolve o resultado final (número ou 0/1 booleano) para a pilha
         fprintf(saida, "    pushq %%rax\n");
     }
 }
