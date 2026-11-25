@@ -1,6 +1,6 @@
-base = 10;
-altura = 20;
-area = base * altura;
-{
+var base = 10;
+var altura = 20;
+var area = base * altura;
+main {
     return area / 2;
 }

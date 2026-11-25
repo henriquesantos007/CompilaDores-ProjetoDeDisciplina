@@ -1,5 +1,5 @@
-x = 5;
-y = 15;
-{
+var x = 5;
+var y = 15;
+main {
     return y - x;
 }
