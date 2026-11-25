@@ -13,8 +13,6 @@ typedef enum {
     FECHA_PAR,      // )
     TOKEN_EOF,
     ERRO,
-
-    // Os Novos tokens pra essa Atividade 08
     ABRE_CHAVE,     // {
     FECHA_CHAVE,    // }
     MENOR,          // <
@@ -23,7 +21,13 @@ typedef enum {
     KW_IF,          // if
     KW_ELSE,        // else
     KW_WHILE,       // while
-    KW_RETURN       // return
+    KW_RETURN,      // return
+
+    // Novos tokens da Atividade 09 (Fun)
+    VIRGULA,        // ,
+    KW_FUN,         // fun
+    KW_VAR,         // var
+    KW_MAIN         // main
 } TipoToken;
 
 typedef struct {
