@@ -1,0 +1,19 @@
+fun mdc(a, b) {
+    while (a == b) == 0 {
+        if a > b {
+            a = a - b;
+        } else {
+            b = b - a;
+        }
+    }
+    return a;
+}
+var total = 0;
+fun acumula(v) {
+    total = total + v;
+    return total;
+}
+main {
+    total = acumula(mdc(48, 18));
+    return acumula(4);
+}

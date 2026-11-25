@@ -1,0 +1,7 @@
+fun f(a) {
+    c = a;
+    return a;
+}
+main {
+    return f(1);
+}

@@ -1,0 +1,12 @@
+fun fat(n) {
+    var r = 1;
+    if n < 2 {
+        r = 1;
+    } else {
+        r = n * fat(n - 1);
+    }
+    return r;
+}
+main {
+    return fat(5);
+}
