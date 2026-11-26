@@ -78,6 +78,12 @@ static Token lerIdentificador(Lexer *lexer) {
         tipo = KW_WHILE;
     } else if (tamanho == 6 && strncmp(nome, "return", tamanho) == 0) {
         tipo = KW_RETURN;
+    } else if (tamanho == 3 && strncmp(nome, "fun", tamanho) == 0) {
+        tipo = KW_FUN;
+    } else if (tamanho == 3 && strncmp(nome, "var", tamanho) == 0) {
+        tipo = KW_VAR;
+    } else if (tamanho == 4 && strncmp(nome, "main", tamanho) == 0) {
+        tipo = KW_MAIN;
     }
 
     return criaToken(lexer, tipo, inicio);
@@ -119,6 +125,9 @@ Token proximoToken(Lexer *lexer) {
 
         case ';':
             return criaToken(lexer, PONTO_VIRGULA, inicio);
+
+        case ',':
+            return criaToken(lexer, VIRGULA, inicio);
 
         case '+':
         case '-':
@@ -164,6 +173,10 @@ const char *tipoTokenParaStr(TipoToken tipo) {
         case KW_ELSE: return "KW_ELSE";
         case KW_WHILE: return "KW_WHILE";
         case KW_RETURN: return "KW_RETURN";
+        case VIRGULA: return "VIRGULA";
+        case KW_FUN: return "KW_FUN";
+        case KW_VAR: return "KW_VAR";
+        case KW_MAIN: return "KW_MAIN";
         default: return "TOKEN_DESCONHECIDO";
     }
 }

@@ -3,6 +3,35 @@
 #include <string.h>
 #include "ast.h"
 
+/* =========================================================
+   FUNCOES AUXILIARES
+   ========================================================= */
+
+static char *copiaString(const char *texto) {
+    if (texto == NULL) {
+        return NULL;
+    }
+
+    size_t tamanho = strlen(texto) + 1;
+    char *copia = malloc(tamanho);
+
+    if (copia != NULL) {
+        memcpy(copia, texto, tamanho);
+    }
+
+    return copia;
+}
+
+static void imprimeIndentacao(int nivel) {
+    for (int i = 0; i < nivel; i++) {
+        printf("    ");
+    }
+}
+
+/* =========================================================
+   EXPRESSOES
+   ========================================================= */
+
 Exp *criaConst(int valor) {
     Exp *exp = malloc(sizeof(Exp));
 
@@ -23,14 +52,13 @@ Exp *criaIdentificador(const char *nome) {
         return NULL;
     }
 
-    exp->dados.identificador = malloc(strlen(nome) + 1);
+    exp->dados.identificador = copiaString(nome);
 
     if (exp->dados.identificador == NULL) {
         free(exp);
         return NULL;
     }
 
-    memcpy(exp->dados.identificador, nome, strlen(nome) + 1);
     exp->tipo = NO_IDENT;
 
     return exp;
@@ -51,16 +79,81 @@ Exp *criaOpBin(Operador op, Exp *esq, Exp *dir) {
     return exp;
 }
 
+/* =========================================================
+   ARGUMENTOS E CHAMADAS DE FUNCAO
+   ========================================================= */
+
+Arg *criaArg(Exp *expressao) {
+    Arg *arg = malloc(sizeof(Arg));
+
+    if (arg == NULL) {
+        return NULL;
+    }
+
+    arg->expressao = expressao;
+    arg->prox = NULL;
+
+    return arg;
+}
+
+void liberaArgs(Arg *args) {
+    while (args != NULL) {
+        Arg *proximo = args->prox;
+
+        liberaExp(args->expressao);
+        free(args);
+
+        args = proximo;
+    }
+}
+
+Exp *criaChamada(const char *nome, Arg *argumentos, int numArgs) {
+    Exp *exp = malloc(sizeof(Exp));
+
+    if (exp == NULL) {
+        return NULL;
+    }
+
+    exp->dados.chamada.nome = copiaString(nome);
+
+    if (exp->dados.chamada.nome == NULL) {
+        free(exp);
+        return NULL;
+    }
+
+    exp->tipo = NO_CHAMADA;
+    exp->dados.chamada.argumentos = argumentos;
+    exp->dados.chamada.numArgs = numArgs;
+
+    return exp;
+}
+
+/* =========================================================
+   LIBERACAO E IMPRESSAO DE EXPRESSOES
+   ========================================================= */
+
 void liberaExp(Exp *exp) {
     if (exp == NULL) {
         return;
     }
 
-    if (exp->tipo == NO_OPBIN) {
-        liberaExp(exp->dados.opbin.esq);
-        liberaExp(exp->dados.opbin.dir);
-    } else if (exp->tipo == NO_IDENT) {
-        free(exp->dados.identificador);
+    switch (exp->tipo) {
+        case NO_CONST:
+            break;
+
+        case NO_IDENT:
+            free(exp->dados.identificador);
+            break;
+
+        case NO_OPBIN:
+            liberaExp(exp->dados.opbin.esq);
+            liberaExp(exp->dados.opbin.dir);
+            break;
+
+        case NO_CHAMADA:
+            free(exp->dados.chamada.nome);
+            liberaArgs(exp->dados.chamada.argumentos);
+            break;
     }
 
     free(exp);
@@ -84,71 +177,127 @@ void imprimeExp(Exp *exp) {
         return;
     }
 
-    if (exp->tipo == NO_CONST) {
-        printf("%d", exp->dados.valor);
-    } else if (exp->tipo == NO_IDENT) {
-        printf("%s", exp->dados.identificador);
-    } else if (exp->tipo == NO_OPBIN) {
-        printf("(");
-        imprimeExp(exp->dados.opbin.esq);
-        printf(" %s ", operadorParaStr(exp->dados.opbin.op));
-        imprimeExp(exp->dados.opbin.dir);
-        printf(")");
+    switch (exp->tipo) {
+        case NO_CONST:
+            printf("%d", exp->dados.valor);
+            break;
+
+        case NO_IDENT:
+            printf("%s", exp->dados.identificador);
+            break;
+
+        case NO_OPBIN:
+            printf("(");
+            imprimeExp(exp->dados.opbin.esq);
+            printf(" %s ", operadorParaStr(exp->dados.opbin.op));
+            imprimeExp(exp->dados.opbin.dir);
+            printf(")");
+            break;
+
+        case NO_CHAMADA: {
+            printf("%s(", exp->dados.chamada.nome);
+
+            Arg *arg = exp->dados.chamada.argumentos;
+
+            while (arg != NULL) {
+                imprimeExp(arg->expressao);
+
+                if (arg->prox != NULL) {
+                    printf(", ");
+                }
+
+                arg = arg->prox;
+            }
+
+            printf(")");
+            break;
+        }
     }
 }
 
-Declaration *criaDeclaration(const char *nome, Exp *expressao) {
-    Declaration *declaracao = malloc(sizeof(Declaration));
+/* =========================================================
+   PARAMETROS
+   ========================================================= */
 
-    if (declaracao == NULL) {
+Param *criaParam(const char *nome) {
+    Param *param = malloc(sizeof(Param));
+
+    if (param == NULL) {
         return NULL;
     }
 
-    declaracao->identificador = malloc(strlen(nome) + 1);
+    param->nome = copiaString(nome);
 
-    if (declaracao->identificador == NULL) {
-        free(declaracao);
+    if (param->nome == NULL) {
+        free(param);
         return NULL;
     }
 
-    memcpy(declaracao->identificador, nome, strlen(nome) + 1);
-    declaracao->expressao = expressao;
-    declaracao->prox = NULL;
+    param->prox = NULL;
 
-    return declaracao;
+    return param;
 }
 
-void liberaDeclaration(Declaration *declaracao) {
-    while (declaracao != NULL) {
-        Declaration *proxima = declaracao->prox;
+void liberaParams(Param *params) {
+    while (params != NULL) {
+        Param *proximo = params->prox;
 
-        free(declaracao->identificador);
-        liberaExp(declaracao->expressao);
-        free(declaracao);
+        free(params->nome);
+        free(params);
 
-        declaracao = proxima;
+        params = proximo;
     }
 }
 
-void imprimeDeclaration(Declaration *declaracao) {
-    while (declaracao != NULL) {
-        printf("%s = ", declaracao->identificador);
-        imprimeExp(declaracao->expressao);
+/* =========================================================
+   DECLARACOES DE VARIAVEIS
+   ========================================================= */
+
+VarDecl *criaVarDecl(const char *nome, Exp *expressao) {
+    VarDecl *varDecl = malloc(sizeof(VarDecl));
+
+    if (varDecl == NULL) {
+        return NULL;
+    }
+
+    varDecl->identificador = copiaString(nome);
+
+    if (varDecl->identificador == NULL) {
+        free(varDecl);
+        return NULL;
+    }
+
+    varDecl->expressao = expressao;
+    varDecl->prox = NULL;
+
+    return varDecl;
+}
+
+void liberaVarDecl(VarDecl *varDecl) {
+    while (varDecl != NULL) {
+        VarDecl *proximo = varDecl->prox;
+
+        free(varDecl->identificador);
+        liberaExp(varDecl->expressao);
+        free(varDecl);
+
+        varDecl = proximo;
+    }
+}
+
+void imprimeVarDecl(VarDecl *varDecl) {
+    while (varDecl != NULL) {
+        printf("var %s = ", varDecl->identificador);
+        imprimeExp(varDecl->expressao);
         printf(";\n");
 
-        declaracao = declaracao->prox;
+        varDecl = varDecl->prox;
     }
 }
 
-static char *copiaString(const char *texto) {
-    char *copia = malloc(strlen(texto) + 1);
-
-    if (copia != NULL) {
-        memcpy(copia, texto, strlen(texto) + 1);
-    }
-
-    return copia;
-}
+/* =========================================================
+   COMANDOS
+   ========================================================= */
 
 Cmd *criaCmdIf(Exp *condicao, Cmd *blocoIf, Cmd *blocoElse) {
     Cmd *cmd = malloc(sizeof(Cmd));
@@ -229,15 +378,9 @@ void liberaCmd(Cmd *cmd) {
     }
 }
 
-static void imprimeComIndentacao(int nivel) {
-    for (int i = 0; i < nivel; i++) {
-        printf("    ");
-    }
-}
-
 static void imprimeListaCmd(Cmd *cmd, int nivel) {
     while (cmd != NULL) {
-        imprimeComIndentacao(nivel);
+        imprimeIndentacao(nivel);
 
         switch (cmd->tipo) {
             case CMD_IF:
@@ -247,12 +390,12 @@ static void imprimeListaCmd(Cmd *cmd, int nivel) {
 
                 imprimeListaCmd(cmd->dados.cmdIf.blocoIf, nivel + 1);
 
-                imprimeComIndentacao(nivel);
+                imprimeIndentacao(nivel);
                 printf("} else {\n");
 
                 imprimeListaCmd(cmd->dados.cmdIf.blocoElse, nivel + 1);
 
-                imprimeComIndentacao(nivel);
+                imprimeIndentacao(nivel);
                 printf("}\n");
                 break;
 
@@ -263,7 +406,7 @@ static void imprimeListaCmd(Cmd *cmd, int nivel) {
 
                 imprimeListaCmd(cmd->dados.cmdWhile.corpo, nivel + 1);
 
-                imprimeComIndentacao(nivel);
+                imprimeIndentacao(nivel);
                 printf("}\n");
                 break;
 
@@ -282,7 +425,152 @@ void imprimeCmd(Cmd *cmd) {
     imprimeListaCmd(cmd, 0);
 }
 
-Program *criaProgram(Declaration *declaracoes, Cmd *comandos,
+/* =========================================================
+   DECLARACOES DE FUNCOES
+   ========================================================= */
+
+FunDecl *criaFunDecl(const char *nome, Param *parametros, int numParams,
+                     VarDecl *locais, int numLocais, Cmd *comandos,
+                     Exp *expressaoFinal) {
+    FunDecl *funDecl = malloc(sizeof(FunDecl));
+
+    if (funDecl == NULL) {
+        return NULL;
+    }
+
+    funDecl->nome = copiaString(nome);
+
+    if (funDecl->nome == NULL) {
+        free(funDecl);
+        return NULL;
+    }
+
+    funDecl->parametros = parametros;
+    funDecl->numParams = numParams;
+    funDecl->locais = locais;
+    funDecl->numLocais = numLocais;
+    funDecl->comandos = comandos;
+    funDecl->expressaoFinal = expressaoFinal;
+
+    return funDecl;
+}
+
+void liberaFunDecl(FunDecl *funDecl) {
+    if (funDecl == NULL) {
+        return;
+    }
+
+    free(funDecl->nome);
+    liberaParams(funDecl->parametros);
+    liberaVarDecl(funDecl->locais);
+    liberaCmd(funDecl->comandos);
+    liberaExp(funDecl->expressaoFinal);
+
+    free(funDecl);
+}
+
+void imprimeFunDecl(FunDecl *funDecl) {
+    if (funDecl == NULL) {
+        return;
+    }
+
+    printf("fun %s(", funDecl->nome);
+
+    Param *param = funDecl->parametros;
+
+    while (param != NULL) {
+        printf("%s", param->nome);
+
+        if (param->prox != NULL) {
+            printf(", ");
+        }
+
+        param = param->prox;
+    }
+
+    printf(") {\n");
+
+    imprimeVarDecl(funDecl->locais);
+
+    imprimeListaCmd(funDecl->comandos, 1);
+
+    printf("    return ");
+    imprimeExp(funDecl->expressaoFinal);
+    printf(";\n}\n");
+}
+
+/* =========================================================
+   DECLARACOES DO PROGRAMA
+   ========================================================= */
+
+Decl *criaDeclVar(VarDecl *varDecl) {
+    Decl *decl = malloc(sizeof(Decl));
+
+    if (decl == NULL) {
+        return NULL;
+    }
+
+    decl->tipo = DECL_VAR;
+    decl->dados.varDecl = varDecl;
+    decl->prox = NULL;
+
+    return decl;
+}
+
+Decl *criaDeclFun(FunDecl *funDecl) {
+    Decl *decl = malloc(sizeof(Decl));
+
+    if (decl == NULL) {
+        return NULL;
+    }
+
+    decl->tipo = DECL_FUN;
+    decl->dados.funDecl = funDecl;
+    decl->prox = NULL;
+
+    return decl;
+}
+
+void liberaDecl(Decl *decl) {
+    while (decl != NULL) {
+        Decl *proximo = decl->prox;
+
+        switch (decl->tipo) {
+            case DECL_VAR:
+                liberaVarDecl(decl->dados.varDecl);
+                break;
+
+            case DECL_FUN:
+                liberaFunDecl(decl->dados.funDecl);
+                break;
+        }
+
+        free(decl);
+        decl = proximo;
+    }
+}
+
+void imprimeDecl(Decl *decl) {
+    while (decl != NULL) {
+        switch (decl->tipo) {
+            case DECL_VAR:
+                imprimeVarDecl(decl->dados.varDecl);
+                break;
+
+            case DECL_FUN:
+                imprimeFunDecl(decl->dados.funDecl);
+                break;
+        }
+
+        decl = decl->prox;
+    }
+}
+
+/* =========================================================
+   PROGRAMA
+   ========================================================= */
+
+Program *criaProgram(Decl *declaracoes, Cmd *comandos,
                      Exp *expressaoFinal) {
     Program *programa = malloc(sizeof(Program));
 
@@ -302,7 +590,7 @@ void liberaProgram(Program *programa) {
         return;
     }
 
-    liberaDeclaration(programa->declaracoes);
+    liberaDecl(programa->declaracoes);
     liberaCmd(programa->comandos);
     liberaExp(programa->expressaoFinal);
 
@@ -314,9 +602,10 @@ void imprimeProgram(Program *programa) {
         return;
     }
 
-    imprimeDeclaration(programa->declaracoes);
+    imprimeDecl(programa->declaracoes);
 
-    printf("{\n");
+    printf("main {\n");
+
     imprimeListaCmd(programa->comandos, 1);
 
     printf("    return ");
