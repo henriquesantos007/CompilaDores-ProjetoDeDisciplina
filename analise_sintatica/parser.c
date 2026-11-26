@@ -3,6 +3,10 @@
 #include <string.h>
 #include "parser.h"
 
+/* =========================================================
+   FUNCOES AUXILIARES
+   ========================================================= */
+
 static void erroSintatico(Parser *parser, const char *mensagem) {
     fprintf(stderr, "Erro sintatico na posicao %zu: %s (token \"%s\")\n",
             parser->atual.indice,
@@ -44,12 +48,27 @@ static char *copiaNome(const char *nome) {
     return copia;
 }
 
+static void verificaAlocacao(void *ponteiro) {
+    if (ponteiro == NULL) {
+        fprintf(stderr, "Erro ao alocar memoria.\n");
+        exit(1);
+    }
+}
+
+/* =========================================================
+   INICIALIZACAO DO PARSER
+   ========================================================= */
+
 Parser inicializaParser(Lexer *lexer) {
     Parser parser;
     parser.lexer = lexer;
     parser.atual = proximoToken(lexer);
     return parser;
 }
+
+/* =========================================================
+   OPERADORES
+   ========================================================= */
 
 Operador analisaOperador(Parser *parser) {
     verificaErroLexico(parser);
@@ -81,32 +100,50 @@ Operador analisaOperador(Parser *parser) {
     return op;
 }
 
-static Declaration *analisaDeclaracao(Parser *parser) {
-    verificaErroLexico(parser);
+/* =========================================================
+   EXPRESSOES
+   ========================================================= */
 
-    if (parser->atual.tipo != IDENTIFICADOR) {
-        erroSintatico(parser, "esperado um identificador na declaracao");
+Exp *analisaExpressao(Parser *parser);
+
+static Arg *analisaListaArgumentos(Parser *parser, int *quantidade) {
+    Arg *inicio = NULL;
+    Arg *ultimo = NULL;
+
+    *quantidade = 0;
+
+    if (parser->atual.tipo == FECHA_PAR) {
+        return NULL;
     }
 
-    char *nome = copiaNome(parser->atual.lexema);
-    avanca(parser);
+    do {
+        Exp *expressao = analisaExpressao(parser);
+        Arg *novo = criaArg(expressao);
 
-    exigeToken(parser, IGUAL, "= esperado na declaracao");
+        if (novo == NULL) {
+            liberaExp(expressao);
+            liberaArgs(inicio);
+            verificaAlocacao(NULL);
+        }
 
-    Exp *expressao = analisaExpressao(parser);
+        if (inicio == NULL) {
+            inicio = novo;
+        } else {
+            ultimo->prox = novo;
+        }
 
-    exigeToken(parser, PONTO_VIRGULA, "; esperado apos a declaracao");
+        ultimo = novo;
+        (*quantidade)++;
 
-    Declaration *declaracao = criaDeclaration(nome, expressao);
-    free(nome);
+        if (parser->atual.tipo != VIRGULA) {
+            break;
+        }
 
-    if (declaracao == NULL) {
-        liberaExp(expressao);
-        fprintf(stderr, "Erro ao alocar memoria.\n");
-        exit(1);
-    }
+        avanca(parser);
 
-    return declaracao;
+    } while (1);
+
+    return inicio;
 }
 
 static Exp *analisaPrim(Parser *parser) {
@@ -117,25 +154,40 @@ static Exp *analisaPrim(Parser *parser) {
         avanca(parser);
 
         Exp *exp = criaConst(valor);
-
-        if (exp == NULL) {
-            fprintf(stderr, "Erro ao alocar memoria.\n");
-            exit(1);
-        }
+        verificaAlocacao(exp);
 
         return exp;
     }
 
     if (parser->atual.tipo == IDENTIFICADOR) {
-        Exp *exp = criaIdentificador(parser->atual.lexema);
+        char *nome = copiaNome(parser->atual.lexema);
+        avanca(parser);
 
-        if (exp == NULL) {
-            fprintf(stderr, "Erro ao alocar memoria.\n");
-            exit(1);
+        if (parser->atual.tipo == ABRE_PAR) {
+            avanca(parser);
+
+            int quantidade;
+            Arg *argumentos = analisaListaArgumentos(parser, &quantidade);
+
+            exigeToken(parser, FECHA_PAR,
+                       "esperado ')' apos os argumentos da chamada");
+
+            Exp *chamada = criaChamada(nome, argumentos, quantidade);
+            free(nome);
+
+            if (chamada == NULL) {
+                liberaArgs(argumentos);
+                verificaAlocacao(NULL);
+            }
+
+            return chamada;
         }
 
-        avanca(parser);
-        return exp;
+        Exp *identificador = criaIdentificador(nome);
+        free(nome);
+
+        verificaAlocacao(identificador);
+        return identificador;
     }
 
     if (parser->atual.tipo == ABRE_PAR) {
@@ -143,7 +195,8 @@ static Exp *analisaPrim(Parser *parser) {
 
         Exp *expressao = analisaExpressao(parser);
 
-        exigeToken(parser, FECHA_PAR, "esperado ')' para fechar a expressao");
+        exigeToken(parser, FECHA_PAR,
+                   "esperado ')' para fechar a expressao");
 
         return expressao;
     }
@@ -166,8 +219,7 @@ static Exp *analisaExpM(Parser *parser) {
         if (nova == NULL) {
             liberaExp(esq);
             liberaExp(dir);
-            fprintf(stderr, "Erro ao alocar memoria.\n");
-            exit(1);
+            verificaAlocacao(NULL);
         }
 
         esq = nova;
@@ -190,8 +242,7 @@ static Exp *analisaExpSoma(Parser *parser) {
         if (nova == NULL) {
             liberaExp(esq);
             liberaExp(dir);
-            fprintf(stderr, "Erro ao alocar memoria.\n");
-            exit(1);
+            verificaAlocacao(NULL);
         }
 
         esq = nova;
@@ -214,8 +265,7 @@ Exp *analisaExpressao(Parser *parser) {
         if (nova == NULL) {
             liberaExp(esq);
             liberaExp(dir);
-            fprintf(stderr, "Erro ao alocar memoria.\n");
-            exit(1);
+            verificaAlocacao(NULL);
         }
 
         esq = nova;
@@ -223,6 +273,179 @@ Exp *analisaExpressao(Parser *parser) {
 
     return esq;
 }
+
+/* =========================================================
+   DECLARACOES DE VARIAVEIS
+   ========================================================= */
+
+static VarDecl *analisaVarDecl(Parser *parser) {
+    exigeToken(parser, KW_VAR, "esperado 'var'");
+
+    if (parser->atual.tipo != IDENTIFICADOR) {
+        erroSintatico(parser, "esperado identificador apos 'var'");
+    }
+
+    char *nome = copiaNome(parser->atual.lexema);
+    avanca(parser);
+
+    exigeToken(parser, IGUAL, "esperado '=' na declaracao");
+
+    Exp *expressao = analisaExpressao(parser);
+
+    exigeToken(parser, PONTO_VIRGULA,
+               "esperado ';' apos a declaracao");
+
+    VarDecl *declaracao = criaVarDecl(nome, expressao);
+    free(nome);
+
+    if (declaracao == NULL) {
+        liberaExp(expressao);
+        verificaAlocacao(NULL);
+    }
+
+    return declaracao;
+}
+
+/* =========================================================
+   LISTA DE PARAMETROS FORMAIS
+   ========================================================= */
+
+static Param *analisaParametros(Parser *parser, int *quantidade) {
+    Param *inicio = NULL;
+    Param *ultimo = NULL;
+
+    *quantidade = 0;
+
+    if (parser->atual.tipo == FECHA_PAR) {
+        return NULL;
+    }
+
+    while (1) {
+        if (parser->atual.tipo != IDENTIFICADOR) {
+            liberaParams(inicio);
+            erroSintatico(parser, "esperado identificador de parametro");
+        }
+
+        char *nome = copiaNome(parser->atual.lexema);
+        avanca(parser);
+
+        Param *novo = criaParam(nome);
+        free(nome);
+
+        if (novo == NULL) {
+            liberaParams(inicio);
+            verificaAlocacao(NULL);
+        }
+
+        if (inicio == NULL) {
+            inicio = novo;
+        } else {
+            ultimo->prox = novo;
+        }
+
+        ultimo = novo;
+        (*quantidade)++;
+
+        if (parser->atual.tipo != VIRGULA) {
+            break;
+        }
+
+        avanca(parser);
+    }
+
+    return inicio;
+}
+
+/* =========================================================
+   LISTAS DE DECLARACOES LOCAIS
+   ========================================================= */
+
+static VarDecl *analisaListaVariaveis(Parser *parser, int *quantidade) {
+    VarDecl *inicio = NULL;
+    VarDecl *ultimo = NULL;
+
+    *quantidade = 0;
+
+    while (parser->atual.tipo == KW_VAR) {
+        VarDecl *nova = analisaVarDecl(parser);
+
+        if (inicio == NULL) {
+            inicio = nova;
+        } else {
+            ultimo->prox = nova;
+        }
+
+        ultimo = nova;
+        (*quantidade)++;
+    }
+
+    return inicio;
+}
+
+/* =========================================================
+   DECLARACAO DE FUNCOES
+   ========================================================= */
+static Cmd *analisaListaComandos(Parser *parser, TipoToken terminador);
+static FunDecl *analisaFunDecl(Parser *parser) {
+    exigeToken(parser, KW_FUN, "esperado 'fun'");
+
+    if (parser->atual.tipo != IDENTIFICADOR) {
+        erroSintatico(parser, "esperado nome da funcao");
+    }
+
+    char *nome = copiaNome(parser->atual.lexema);
+    avanca(parser);
+
+    exigeToken(parser, ABRE_PAR, "esperado '(' apos nome da funcao");
+
+    int numParams;
+    Param *parametros = analisaParametros(parser, &numParams);
+
+    exigeToken(parser, FECHA_PAR, "esperado ')' apos os parametros");
+
+    exigeToken(parser, ABRE_CHAVE, "esperado '{' no corpo da funcao");
+
+    int numLocais;
+    VarDecl *locais = analisaListaVariaveis(parser, &numLocais);
+
+    Cmd *comandos = analisaListaComandos(parser, KW_RETURN);
+
+    exigeToken(parser, KW_RETURN, "esperado 'return' na funcao");
+
+    Exp *expressaoFinal = analisaExpressao(parser);
+
+    exigeToken(parser, PONTO_VIRGULA,
+               "esperado ';' apos o return da funcao");
+
+    exigeToken(parser, FECHA_CHAVE,
+               "esperado '}' para fechar a funcao");
+
+    FunDecl *funcao = criaFunDecl(
+        nome,
+        parametros,
+        numParams,
+        locais,
+        numLocais,
+        comandos,
+        expressaoFinal
+    );
+
+    free(nome);
+
+    if (funcao == NULL) {
+        liberaParams(parametros);
+        liberaVarDecl(locais);
+        liberaCmd(comandos);
+        liberaExp(expressaoFinal);
+        verificaAlocacao(NULL);
+    }
+
+    return funcao;
+}
+
+/* =========================================================
+   COMANDOS
+   ========================================================= */
 
 static Cmd *analisaListaComandos(Parser *parser, TipoToken terminador);
 
@@ -237,8 +460,6 @@ static Cmd *analisaBloco(Parser *parser) {
 }
 
 static Cmd *analisaAtribuicao(Parser *parser) {
-    verificaErroLexico(parser);
-
     if (parser->atual.tipo != IDENTIFICADOR) {
         erroSintatico(parser, "esperado identificador na atribuicao");
     }
@@ -250,22 +471,22 @@ static Cmd *analisaAtribuicao(Parser *parser) {
 
     Exp *expressao = analisaExpressao(parser);
 
-    exigeToken(parser, PONTO_VIRGULA, "esperado ';' apos a atribuicao");
+    exigeToken(parser, PONTO_VIRGULA,
+               "esperado ';' apos a atribuicao");
 
     Cmd *cmd = criaCmdAtrib(nome, expressao);
     free(nome);
 
     if (cmd == NULL) {
         liberaExp(expressao);
-        fprintf(stderr, "Erro ao alocar memoria.\n");
-        exit(1);
+        verificaAlocacao(NULL);
     }
 
     return cmd;
 }
 
 static Cmd *analisaIf(Parser *parser) {
-    avanca(parser);
+    exigeToken(parser, KW_IF, "esperado 'if'");
 
     Exp *condicao = analisaExpressao(parser);
     Cmd *blocoIf = analisaBloco(parser);
@@ -280,15 +501,14 @@ static Cmd *analisaIf(Parser *parser) {
         liberaExp(condicao);
         liberaCmd(blocoIf);
         liberaCmd(blocoElse);
-        fprintf(stderr, "Erro ao alocar memoria.\n");
-        exit(1);
+        verificaAlocacao(NULL);
     }
 
     return cmd;
 }
 
 static Cmd *analisaWhile(Parser *parser) {
-    avanca(parser);
+    exigeToken(parser, KW_WHILE, "esperado 'while'");
 
     Exp *condicao = analisaExpressao(parser);
     Cmd *corpo = analisaBloco(parser);
@@ -298,8 +518,7 @@ static Cmd *analisaWhile(Parser *parser) {
     if (cmd == NULL) {
         liberaExp(condicao);
         liberaCmd(corpo);
-        fprintf(stderr, "Erro ao alocar memoria.\n");
-        exit(1);
+        verificaAlocacao(NULL);
     }
 
     return cmd;
@@ -350,12 +569,37 @@ static Cmd *analisaListaComandos(Parser *parser, TipoToken terminador) {
     return inicio;
 }
 
-Program *analisaPrograma(Parser *parser) {
-    Declaration *declaracoes = NULL;
-    Declaration *ultima = NULL;
+/* =========================================================
+   PROGRAMA
+   ========================================================= */
 
-    while (parser->atual.tipo == IDENTIFICADOR) {
-        Declaration *nova = analisaDeclaracao(parser);
+Program *analisaPrograma(Parser *parser) {
+    Decl *declaracoes = NULL;
+    Decl *ultima = NULL;
+
+    /* Lê as declarações globais e funções */
+    while (parser->atual.tipo == KW_VAR ||
+           parser->atual.tipo == KW_FUN) {
+
+        Decl *nova = NULL;
+
+        if (parser->atual.tipo == KW_VAR) {
+            VarDecl *varDecl = analisaVarDecl(parser);
+            nova = criaDeclVar(varDecl);
+
+            if (nova == NULL) {
+                liberaVarDecl(varDecl);
+                verificaAlocacao(NULL);
+            }
+        } else {
+            FunDecl *funDecl = analisaFunDecl(parser);
+            nova = criaDeclFun(funDecl);
+
+            if (nova == NULL) {
+                liberaFunDecl(funDecl);
+                verificaAlocacao(NULL);
+            }
+        }
 
         if (declaracoes == NULL) {
             declaracoes = nova;
@@ -366,31 +610,49 @@ Program *analisaPrograma(Parser *parser) {
         ultima = nova;
     }
 
-    exigeToken(parser, ABRE_CHAVE, "esperado '{' para iniciar o programa");
+    /* Início do bloco main */
+    exigeToken(parser, KW_MAIN,
+               "esperado 'main' apos as declaracoes");
+
+    exigeToken(parser, ABRE_CHAVE,
+               "esperado '{' apos 'main'");
 
     Cmd *comandos = analisaListaComandos(parser, KW_RETURN);
 
-    exigeToken(parser, KW_RETURN, "esperado 'return' no final do bloco");
+    exigeToken(parser, KW_RETURN,
+               "esperado 'return' no bloco main");
 
     Exp *expressaoFinal = analisaExpressao(parser);
 
-    exigeToken(parser, PONTO_VIRGULA, "esperado ';' apos a expressao do return");
-    exigeToken(parser, FECHA_CHAVE, "esperado '}' para fechar o programa");
+    exigeToken(parser, PONTO_VIRGULA,
+               "esperado ';' apos expressao do return");
 
+    exigeToken(parser, FECHA_CHAVE,
+               "esperado '}' para fechar main");
+
+    /* Verifica se não existem tokens depois do programa */
     verificaErroLexico(parser);
 
     if (parser->atual.tipo != TOKEN_EOF) {
-        erroSintatico(parser, "tokens inesperados apos o fim do programa");
-    }
-
-    Program *programa = criaProgram(declaracoes, comandos, expressaoFinal);
-
-    if (programa == NULL) {
-        liberaDeclaration(declaracoes);
+        liberaDecl(declaracoes);
         liberaCmd(comandos);
         liberaExp(expressaoFinal);
-        fprintf(stderr, "Erro ao alocar memoria.\n");
-        exit(1);
+
+        erroSintatico(parser,
+                      "tokens inesperados apos o fim do programa");
+    }
+
+    Program *programa = criaProgram(
+        declaracoes,
+        comandos,
+        expressaoFinal
+    );
+
+    if (programa == NULL) {
+        liberaDecl(declaracoes);
+        liberaCmd(comandos);
+        liberaExp(expressaoFinal);
+        verificaAlocacao(NULL);
     }
 
     return programa;
