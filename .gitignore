@@ -11,3 +11,6 @@ programa.s
 
 # Ignorar arquivo de teste do lexer
 meuTeste.c
+
+# Ignorar Markdows explicativos para o professor
+documentacao_sucinta.md
