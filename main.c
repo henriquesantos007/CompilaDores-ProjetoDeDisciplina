@@ -6,10 +6,9 @@
 #include "lexer.h"
 #include "parser.h"
 #include "ast.h"
-#include "gerador.h"
+#include "tabela_simbolos.h"
 #include "analise_semantica.h"
-
-
+#include "gerador.h"
 
 // Estruturas e Funções Auxiliares
 
@@ -17,21 +16,6 @@ typedef struct {
     const char *caminhoEntrada;
     bool modoAssembly;
 } ConfiguracaoCli;
-
-static const char *nomeTipoToken(TipoToken tipo) {
-    switch (tipo) {
-        case ABRE_PAR:      return "ABRE_PAR";
-        case FECHA_PAR:     return "FECHA_PAR";
-        case NUM:           return "NUM";
-        case OP:            return "OP";
-        case PONTO_VIRGULA: return "PONTO_VIRGULA";
-        case IGUAL:         return "IGUAL";
-        case IDENTIFICADOR: return "IDENTIFICADOR";
-        case TOKEN_EOF:     return "TOKEN_EOF";
-        case ERRO:          return "ERRO";
-        default:            return "DESCONHECIDO";
-    }
-}
 
 // Validar e extrair os argumentos passados pelo terminal
 static ConfiguracaoCli analisarArgumentos(int argc, char *argv[]) {
@@ -104,7 +88,7 @@ static int executarFaseLexica(const char *buffer, bool modoAssembly) {
         // Imprime os tokens na tela apenas se não estiver no modo de geração de assembly
         if (!modoAssembly && token.tipo != ERRO && token.tipo != TOKEN_EOF) {
             printf("<%s, \"%s\", %zu>\n",
-                   nomeTipoToken(token.tipo),
+                   tipoTokenParaStr(token.tipo),
                    token.lexema != NULL ? token.lexema : "",
                    token.indice);
         }
@@ -120,16 +104,16 @@ static int executarPipelineCompilacao(const char *buffer, bool modoAssembly) {
     Lexer lexer = inicializaLexer(buffer);
     Parser parser = inicializaParser(&lexer);
 
-    // Fase Sintática pra gerar a AST
+    // Fase Sintática para gerar a AST
     Program *programa = analisaPrograma(&parser);
     int codigoSaida = 0;
 
-    // Fase Semântica que valida variáveis fantasmas na AST com a Hash Table
-    analisarSemantica(programa);
+    // Fase Semântica: valida escopos/funções e retorna a tabela populada para a síntese
+    TabelaSimbolos *tabela = analisarSemantica(programa);
 
-    // Fase de Síntese onde gera o Assembly ou imprime a Árvore
+    // Fase de Síntese: gera o Assembly x86-64 ou imprime a Árvore Sintática
     if (modoAssembly) {
-        if (gerar_codigo_ast(programa, stdout) != 0) {
+        if (gerar_codigo_ast(programa, tabela, stdout) != 0) {
             fprintf(stderr, "Erro ao gerar o codigo assembly.\n");
             codigoSaida = 1;
         }
@@ -139,12 +123,12 @@ static int executarPipelineCompilacao(const char *buffer, bool modoAssembly) {
     }
 
     // Limpeza de memória do pipeline
+    liberaTabelaSimbolos(tabela);
     liberaProgram(programa);
     free(parser.atual.lexema);
     
     return codigoSaida;
 }
-
 
 int main(int argc, char *argv[]) {
     // Configuração
