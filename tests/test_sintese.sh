@@ -43,7 +43,7 @@ testar_erro() {
     printf 'OK: %s rejeitado (%s)\n' "$arquivo" "$(cat "$temporario/erro.txt")"
 }
 
-echo "Iniciando testes da linguagem Cmd (Atividade 08)..."
+echo "Iniciando testes da linguagem Fun (Atividade 09)..."
 
 testar_arquivo tests/exemplo01.txt 42
 testar_arquivo tests/exemplo02.txt 10
@@ -52,11 +52,21 @@ testar_arquivo tests/exemplo04.txt 16
 testar_arquivo tests/exemplo05.txt 55
 testar_arquivo tests/exemplo06.txt 2
 testar_arquivo tests/exemplo07.txt 6
+testar_arquivo tests/exemplo08.txt 120
+testar_arquivo tests/exemplo09.txt 55
+testar_arquivo tests/exemplo10.txt 29
+testar_arquivo tests/exemplo11.txt 130
+testar_arquivo tests/exemplo12.txt 10
 
 echo "Testando entradas invalidas..."
 
 testar_erro tests/erro01.txt
 testar_erro tests/erro02.txt
 testar_erro tests/erro03.txt
+testar_erro tests/erro04.txt
+testar_erro tests/erro05.txt
+testar_erro tests/erro06.txt
+testar_erro tests/erro07.txt
+testar_erro tests/erro08.txt
 
 echo "Todos os testes passaram com sucesso!"

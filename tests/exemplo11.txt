@@ -1,0 +1,13 @@
+var x = 100;
+var y = 1;
+fun soma(x) {
+    var y = 5;
+    return x + y;
+}
+fun usaGlobal() {
+    return x + y;
+}
+main {
+    y = soma(10);
+    return y + usaGlobal();
+}

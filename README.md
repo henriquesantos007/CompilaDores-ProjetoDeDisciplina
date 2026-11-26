@@ -1,9 +1,9 @@
-# Atividade 08 — Compilador da Linguagem Cmd (Comandos e Fluxo de Controle)
+# Atividade 09 — Compilador da Linguagem Fun (Funções e Escopo)
 
 **Disciplina:** Construção de Compiladores  
 **Plataforma alvo:** x86-64 / Linux (GNU Assembler)
 
-Compilador completo para a linguagem Turing-completa **Cmd**, com suporte a declarações de variáveis, comandos condicionais (`if`/`else`), laços de repetição (`while`), atribuições, operadores relacionais e retorno (`return`), gerando código Assembly x86-64 executável para Linux.
+Compilador para a linguagem **Fun**, que estende a linguagem Cmd (variáveis, `if`/`else`, `while`, atribuições e operadores relacionais) com declaração de funções, parâmetros, variáveis locais, chamadas (inclusive recursivas) e bloco principal `main`, gerando código Assembly x86-64 executável para Linux.
 
 ## 1. Grupo
 
@@ -16,11 +16,11 @@ Compilador completo para a linguagem Turing-completa **Cmd**, com suporte a decl
 
 ## 2. Etapa Léxica
 
-O analisador léxico (`lexer.h`/`lexer.c`) lê o código-fonte de um arquivo e o converte em uma sequência de tokens, ignorando espaços, tabulações e quebras de linha. Na linguagem Cmd, o lexer realiza *lookahead* de um caractere para diferenciar `=` de `==` e verifica se um identificador corresponde a uma palavra reservada antes de emitir `IDENTIFICADOR`.
+O analisador léxico (`lexer.h`/`lexer.c`) lê o código-fonte de um arquivo e o converte em uma sequência de tokens, ignorando espaços, tabulações e quebras de linha. O lexer realiza *lookahead* de um caractere para diferenciar `=` de `==` e verifica se um identificador corresponde a uma palavra reservada antes de emitir `IDENTIFICADOR`.
 
 | Token           | Lexemas reconhecidos |
 | --------------- | -------------------- |
-| `IDENTIFICADOR` | Nomes de variáveis (ex: `x`, `soma`, `delta`) |
+| `IDENTIFICADOR` | Nomes de variáveis e funções (ex: `x`, `soma`, `fib`) |
 | `NUM`           | Números inteiros (ex: `321`) |
 | `OP`            | Operadores aritméticos (`+`, `-`, `*`, `/`) |
 | `MENOR`         | Operador relacional menor que (`<`) |
@@ -28,6 +28,7 @@ O analisador léxico (`lexer.h`/`lexer.c`) lê o código-fonte de um arquivo e o
 | `IGUAL_IGUAL`   | Operador relacional de igualdade (`==`) |
 | `IGUAL`         | Atribuição e declaração (`=`) |
 | `PONTO_VIRGULA` | Delimitador de fim de instrução (`;`) |
+| `VIRGULA`       | Separador de parâmetros e argumentos (`,`) |
 | `ABRE_PAR`      | `(` |
 | `FECHA_PAR`     | `)` |
 | `ABRE_CHAVE`    | Abertura de bloco (`{`) |
@@ -36,16 +37,22 @@ O analisador léxico (`lexer.h`/`lexer.c`) lê o código-fonte de um arquivo e o
 | `KW_ELSE`       | Palavra-chave alternativa (`else`) |
 | `KW_WHILE`      | Palavra-chave de repetição (`while`) |
 | `KW_RETURN`     | Palavra-chave de expressão final (`return`) |
+| `KW_FUN`        | Declaração de função (`fun`) |
+| `KW_VAR`        | Declaração de variável (`var`) |
+| `KW_MAIN`       | Bloco principal do programa (`main`) |
 | `TOKEN_EOF`     | Fim do arquivo |
 | `ERRO`          | Caractere não reconhecido |
 
 ## 3. Etapa Sintática
 
-O analisador sintático (`parser.h`/`parser.c`) constrói a Árvore Sintática Abstrata (`ast.h`/`ast.c`) por análise descendente recursiva. A gramática da linguagem Cmd separa declarações iniciais do corpo de comandos (delimitado por chaves), exige o bloco `else` em comandos `if` e posiciona os operadores relacionais (`<`, `>`, `==`) em um nível de precedência inferior aos aritméticos:
+O analisador sintático (`parser.h`/`parser.c`) constrói a Árvore Sintática Abstrata (`ast.h`/`ast.c`) por análise descendente recursiva. Na linguagem Fun, o programa é uma sequência de declarações de variáveis globais e funções seguida do bloco `main`. O `if` continua exigindo `else` e os operadores relacionais têm precedência menor que os aritméticos:
 
 ```text
-<programa> ::= <decl>* '{' <cmd>* 'return' <exp> ';' '}'
-<decl>     ::= <id> '=' <exp> ';'
+<programa> ::= <decl>* 'main' '{' <cmd>* 'return' <exp> ';' '}'
+<decl>     ::= <vardecl> | <fundecl>
+<vardecl>  ::= 'var' <id> '=' <exp> ';'
+<fundecl>  ::= 'fun' <id> '(' <arglist>? ')' '{' <vardecl>* <cmd>* 'return' <exp> ';' '}'
+<arglist>  ::= <id> (',' <id>)*
 <cmd>      ::= <if> | <while> | <atrib>
 <if>       ::= 'if' <exp> '{' <cmd>* '}' 'else' '{' <cmd>* '}'
 <while>    ::= 'while' <exp> '{' <cmd>* '}'
@@ -53,22 +60,23 @@ O analisador sintático (`parser.h`/`parser.c`) constrói a Árvore Sintática A
 <exp>      ::= <exp_a> (('<' | '>' | '==') <exp_a>)*
 <exp_a>    ::= <exp_m> (('+' | '-') <exp_m>)*
 <exp_m>    ::= <prim> (('*' | '/') <prim>)*
-<prim>     ::= <num> | <id> | '(' <exp> ')'
+<prim>     ::= <num> | <id> | <id> '(' <explist>? ')' | '(' <exp> ')'
+<explist>  ::= <exp> (',' <exp>)*
 <id>       ::= <letra><letra_digito>*
 <num>      ::= <digito><digito>*
 ```
 
-A estrutura `Program` encapsula a lista encadeada de declarações (`Declaration`), a lista encadeada de comandos (`Cmd` — suportando `CMD_IF`, `CMD_WHILE` e `CMD_ATRIB`, inclusive em blocos vazios ou aninhados) e a expressão final (`return`).
+A estrutura `Program` guarda a lista ordenada de declarações (`Decl`, que pode ser `DECL_VAR` ou `DECL_FUN`), os comandos do `main` e a expressão final. Cada `FunDecl` guarda nome, parâmetros (`Param`), variáveis locais (`VarDecl`), comandos e expressão de retorno. Chamadas de função são representadas pelo nó `NO_CHAMADA`, com a lista de argumentos (`Arg`).
 
 ## 4. Etapa Semântica (Tabela de Símbolos)
 
-Atuando como camada de proteção antes da geração de código, a Análise Semântica (`analise_semantica.c` / `tabela_simbolos.c`) garante a integridade do escopo:
-- **Hash Table:** Implementada com o algoritmo *djb2* e tratamento de colisões por encadeamento separado, garantindo buscas e inserções em tempo médio `O(1)`.
-- **Validação de Declarações e Expressões:** Registra todas as variáveis declaradas no início do programa e impede o uso de variáveis não declaradas.
-- **Validação de Comandos (`verificaComandos`):** Percorre recursivamente a lista de comandos e blocos aninhados:
-  - `CMD_ATRIB`: valida as variáveis da expressão (lado direito) e exige que a variável atribuída (lado esquerdo) já exista na tabela de símbolos (atribuições não criam variáveis novas).
-  - `CMD_IF` e `CMD_WHILE`: validam as expressões de condição e percorrem recursivamente `blocoIf`, `blocoElse` e `corpo`.
-- Qualquer violação emite uma mensagem descritiva em `stderr` e encerra a compilação com `exit(1)`.
+A Análise Semântica (`analise_semantica.c` / `tabela_simbolos.c`) valida a AST antes da geração de código e devolve a tabela global preenchida para a síntese:
+- **Hash Table:** algoritmo *djb2* com encadeamento separado. Cada símbolo guarda seu tipo (`SIMB_VAR_GLOBAL`, `SIMB_VAR_LOCAL` ou `SIMB_FUNCAO`); funções guardam número de parâmetros, número de locais e sua própria tabela local.
+- **Escopos:** existe uma tabela global (variáveis globais e funções) e uma tabela local por função (parâmetros e variáveis locais). Dentro de uma função a busca é feita primeiro na tabela local e depois na global, permitindo *shadowing*.
+- **Funções:** a função é registrada na tabela global antes da análise do corpo, permitindo recursão. Os offsets em relação a `%rbp` seguem a convenção: locais em `i * 8` e parâmetros em `(L + 2 + j) * 8`, onde `L` é o número de locais.
+- **Chamadas (`NO_CHAMADA`):** o nome precisa existir, ser uma função e o número de argumentos precisa ser igual ao número de parâmetros.
+- **Comandos e expressões:** variáveis usadas ou atribuídas precisam ter sido declaradas (no escopo local ou global) e não podem ser funções.
+- Qualquer erro emite uma mensagem em `stderr` e encerra a compilação com `exit(1)`.
 
 ## 5. Etapa de Síntese (Geração de Código x86-64)
 
@@ -88,7 +96,7 @@ Ambiente Linux (x86-64) com as seguintes ferramentas instaladas:
 - `ld` (GNU Linker)
 
 ### 🤖 1. Execução Automatizada (Bateria de Testes)
-O script `tests/test_sintese.sh` compila o motor em C, executa os exemplos válidos (`exemplo01.txt` a `exemplo07.txt`) conferindo a saída de cada binário gerado e verifica se os casos inválidos (`erro01.txt` a `erro03.txt`) são corretamente rejeitados pela análise semântica.
+O script `tests/test_sintese.sh` compila o motor em C, executa os exemplos válidos (`exemplo01.txt` a `exemplo12.txt`) conferindo a saída de cada binário gerado e verifica se os casos inválidos (`erro01.txt` a `erro08.txt`) são corretamente rejeitados pela análise semântica.
 
 Na raiz do projeto, dê permissão de execução e rode o script:
 ```bash
@@ -97,7 +105,7 @@ chmod +x tests/test_sintese.sh
 ```
 
 ### 🛠️ 2. Execução Manual Passo a Passo
-Para compilar e executar manualmente qualquer código-fonte da linguagem Cmd:
+Para compilar e executar manualmente qualquer código-fonte da linguagem Fun:
 
 **Passo A: Compilar o Motor do Compilador (C)**
 ```bash
@@ -114,13 +122,13 @@ gcc -std=c11 -Wall -Wextra -Werror \
 **Passo B: Visualizar Tokens e Árvore Sintática (Modo Padrão)**
 Execute sem a flag `--asm` e sem redirecionar a saída:
 ```bash
-./compilador tests/exemplo05.txt
+./compilador tests/exemplo09.txt
 ```
 
 **Passo C: Traduzir o código-fonte para Assembly x86-64 (`--asm`)**
 Acrescente a flag `--asm` para imprimir exclusivamente o código Assembly e redirecione para um arquivo `.s`:
 ```bash
-./compilador --asm tests/exemplo05.txt > programa.s
+./compilador --asm tests/exemplo09.txt > programa.s
 ```
 
 **Passo D: Montar, Linkar e Executar o Binário Final**
@@ -133,21 +141,23 @@ ld programa.o -o programa
 
 ## 7. Arquivos de Exemplo e Testes
 
-A pasta `tests/` contém programas de validação para a linguagem Cmd:
-- `tests/exemplo01.txt` a `tests/exemplo03.txt`: Programas básicos com declarações, operações aritméticas e `return`.
-- `tests/exemplo04.txt`: Uso de condicional `if`/`else` (cálculo do valor absoluto do discriminante `delta`).
-- `tests/exemplo05.txt`: Uso de laço `while` (soma dos inteiros de `n` até `m - 1`).
-- `tests/exemplo06.txt`: Cálculo do resto da divisão por subtrações sucessivas usando `while` e comparação `>`.
-- `tests/exemplo07.txt`: Cálculo do Máximo Divisor Comum (MDC) com laços `while` aninhados.
-- `tests/erro01.txt` a `tests/erro03.txt`: Casos de erro semântico (atribuição a variável não declarada e uso de variável não declarada dentro de `if` e `while`).
-- `tests/test_sintese.sh`: Script de validação automática *end-to-end*.
+A pasta `tests/` contém programas de validação para a linguagem Fun:
+- `tests/exemplo01.txt` a `tests/exemplo07.txt`: exemplos das atividades anteriores reescritos na sintaxe Fun (`var` e `main`).
+- `tests/exemplo08.txt`: fatorial recursivo (função com parâmetro e variável local).
+- `tests/exemplo09.txt`: Fibonacci recursivo.
+- `tests/exemplo10.txt`: funções chamando outras funções, incluindo função sem parâmetros e sem locais.
+- `tests/exemplo11.txt`: *shadowing* de variáveis globais por parâmetro e por variável local.
+- `tests/exemplo12.txt`: MDC em função com `while`, chamada como argumento e função que altera variável global.
+- `tests/erro01.txt` a `tests/erro03.txt`: uso/atribuição de variável não declarada no `main`.
+- `tests/erro04.txt` a `tests/erro08.txt`: chamada a função não declarada, número errado de argumentos, variável chamada como função, uso de variável local de outra função e atribuição a variável não declarada dentro de função.
+- `tests/test_sintese.sh`: script de validação automática *end-to-end*.
 
 ## 8. Organização da Arquitetura
 
 O projeto adota o Princípio da Responsabilidade Única (SRP) com separação modular por fases do compilador:
 - `analise_lexica/`: Implementação do Lexer e mapeamento de Tokens (`lexer.h`/`lexer.c`).
 - `analise_sintatica/`: Parser descendente recursivo (`parser.h`/`parser.c`) e estruturas da AST (`ast.h`/`ast.c`).
-- `analise_semantica/`: Validador de escopo/comandos (`analise_semantica.c`) e Tabela de Símbolos em Hash Table (`tabela_simbolos.c`).
+- `analise_semantica/`: Validador de escopos, funções e comandos (`analise_semantica.c`) e Tabela de Símbolos em Hash Table (`tabela_simbolos.c`).
 - `sintese/`: Gerador de código Assembly x86-64 (`gerador.h`/`gerador.c`).
 - `runtime.s`: Rotinas de sistema (`imprime_num` e `sair`), incluídas no Assembly gerado.
 - `main.c`: Orquestrador do pipeline de compilação e seleção de modo (`--asm` vs padrão).
@@ -155,4 +165,4 @@ O projeto adota o Princípio da Responsabilidade Única (SRP) com separação mo
 
 ## 9. Uso de LLMs
 
-Nas atividades anteriores, o grupo utilizou o Google Gemini como apoio na engenharia da Tabela de Símbolos (*djb2*), depuração, testes, documentação e refatoração do `main.c` seguindo princípios de *Clean Code*. Para a **Atividade 08**, o grupo utilizou o **Claude (Anthropic)** como apoio na análise semântica dos comandos, nos arquivos de teste e no esboço da documentação, e o **Google Gemini** no planejamento da arquitetura *Contract-First*, na geração de código x86-64 para comandos/comparações, nas revisões de código e na consolidação deste `README.md`. Todo o código gerado foi revisado, compilado e validado manualmente pelo grupo.
+Nas atividades anteriores, o grupo utilizou o Google Gemini como apoio na engenharia da Tabela de Símbolos (*djb2*), depuração, testes, documentação e refatoração do `main.c` seguindo princípios de *Clean Code*. Para a **Atividade 08**, o grupo utilizou o **Claude (Anthropic)** como apoio na análise semântica dos comandos, nos arquivos de teste e no esboço da documentação, e o **Google Gemini** no planejamento da arquitetura *Contract-First*, na geração de código x86-64 para comandos/comparações, nas revisões de código e na consolidação deste `README.md`. Para a **Atividade 09**, o grupo utilizou o **Claude (Anthropic)** como apoio na análise semântica de funções e escopos, nos arquivos de teste e na atualização deste `README.md`. Todo o código gerado foi revisado, compilado e validado manualmente pelo grupo.

@@ -1,6 +1,6 @@
-a = 48;
-b = 18;
-{
+var a = 48;
+var b = 18;
+main {
     while (a == b) == 0 {
         if a > b {
             a = a - b;

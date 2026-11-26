@@ -1,0 +1,16 @@
+var base = 3;
+fun dobro(x) {
+    return x * 2;
+}
+fun quadrado(x) {
+    return x * x;
+}
+fun calcula(a, b) {
+    return dobro(a) + quadrado(b);
+}
+fun constante() {
+    return 7;
+}
+main {
+    return calcula(base, 4) + constante();
+}

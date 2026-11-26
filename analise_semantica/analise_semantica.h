@@ -1,9 +1,9 @@
 #ifndef ANALISE_SEMANTICA_H
 #define ANALISE_SEMANTICA_H
 
-#include "../analise_sintatica/ast.h" 
+#include "../analise_sintatica/ast.h"
+#include "tabela_simbolos.h"
 
-// Função principal que inicia a verificação semântica na árvore do programa
-void analisarSemantica(Program *programa);
+TabelaSimbolos *analisarSemantica(Program *programa);
 
 #endif

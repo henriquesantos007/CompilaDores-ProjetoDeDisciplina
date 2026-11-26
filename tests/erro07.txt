@@ -1,0 +1,10 @@
+fun f(a) {
+    var b = a + 1;
+    return b;
+}
+fun g() {
+    return b;
+}
+main {
+    return g();
+}
